@@ -28,6 +28,7 @@ w.add_images(paths, into=w.tiles[0])
 loaded = [t for t in w.tiles if t.loaded]
 assert len(loaded) == 2, f"expected 2 loaded, got {len(loaded)}"
 assert all(t.loaded for t in w.tiles), "no spare empty slot: the add bar makes those now"
+assert not w.single, "a batch of images should land in Grid"
 
 # select all + batch joint auto render
 w.mode_btns[1].setChecked(True)   # "All together"
@@ -141,14 +142,18 @@ assert len(w.tiles) == 1 and w.tiles[0].loaded
 w._reflow()
 assert w.tiles[0].maximumWidth() == 16777215, "a lone loaded tile shrank to grid size"
 
-# Single view is the default; Grid is greyed out until there is a gallery
-assert w.single, "Single should be the default view"
-assert not w.view_btns[0].isEnabled(), "Grid must be disabled with a single slot"
+# one slot left: Grid means nothing, so it is off and Single is forced back on
+assert w.single, "a lone slot must fall back to Single"
+assert not w.view_btns[1].isEnabled(), "Grid must be disabled with a single slot"
 w.add_images(paths[1:2])
 assert len(w.tiles) == 2, "second image should add a slot"
-assert w.view_btns[0].isEnabled(), "Grid should switch on once there are two slots"
+assert w.single, "one image at a time must not switch the view"
+assert w.view_btns[1].isEnabled(), "Grid should switch on once there are two slots"
 assert w.active.maximumWidth() == 16777215, "Single view did not enlarge"
 assert sum(t.isVisibleTo(w) for t in w.tiles) == 1, "Single view shows more than one tile"
+
+# the panel says what the ringed image is
+assert "240 × 160 px" in w.lab_info.text(), f"bad info: {w.lab_info.text()!r}"
 
 # the nav bar counts the slots and greys out at the ends (no wrap-around)
 assert w.nav.isVisibleTo(w), "nav bar should show in Single view"
@@ -168,10 +173,35 @@ extra = w.add_empty()
 assert len(w.tiles) == n + 1 and w.active is extra, "+ should select the new slot"
 assert "empty slot" in w.lab_pos.text(), f"counter ignores empty slots: {w.lab_pos.text()!r}"
 
+# the nav bar names the file, so the in-frame caption steps aside
+assert not w.tiles[0].head.isVisibleTo(w.tiles[0]), "file name shown twice in Single view"
+
 # Grid shows every tile again
-w.view_btns[0].setChecked(True)
+w.view_btns[1].setChecked(True)
 assert not w.single and all(t.isVisibleTo(w) for t in w.tiles), "Grid did not restore tiles"
 assert not w.nav.isVisibleTo(w), "nav bar belongs to Single view only"
+assert w.tiles[0].head.isVisibleTo(w.tiles[0]), "Grid tiles need their caption back"
+
+# clicking the background is the quick way to deselect
+w.select_all()
+w.grid_host.mousePressEvent(None)
+assert not w.selection and w.active is None, "background click should deselect"
+
+# ... and Single must still show something when nothing is ringed
+w.view_btns[0].setChecked(True)
+assert w.active in w.tiles and sum(x.isVisibleTo(w) for x in w.tiles) == 1,     "Single view with an empty selection showed the whole gallery"
+w.view_btns[1].setChecked(True)
+
+# Shift extends from the anchor, so re-clicking further out grows the range
+w.add_empty()          # a fourth slot to drag a range across
+idx = lambda: sorted(w.tiles.index(x) for x in w.selection)
+w.select(w.tiles[0], Qt.NoModifier)
+w.select(w.tiles[2], Qt.ShiftModifier)
+assert idx() == [0, 1, 2], f"shift range wrong: {idx()}"
+w.select(w.tiles[3], Qt.ShiftModifier)
+assert idx() == [0, 1, 2, 3], f"shift moved the anchor instead of extending: {idx()}"
+w.select(w.tiles[1], Qt.ShiftModifier)
+assert idx() == [0, 1], f"shift should shrink back towards the anchor: {idx()}"
 
 # a loaded tile must not keep the empty slot's Open/Paste buttons (resize bug)
 from PySide6.QtWidgets import QPushButton
@@ -204,8 +234,16 @@ assert not fresh_tile.computed, "loading with Auto off must not mark it computed
 assert np.array_equal(fresh_tile.output(full=False), fresh_tile.preview), \
     "with Auto off a new image must display its original pixels"
 assert not w._fresh, "the marker should be amber after loading with Auto off"
+assert w.btn_compute.text().strip() == "Compute", "nothing computed yet, so not *re*compute"
+assert w.btn_orig.isChecked() and not w.btn_orig.isEnabled(), \
+    "with nothing computed the compare button has nowhere to go but original"
+assert not w.wp_info.isVisibleTo(w), "no white point to report before the first pass"
 w.recompute()
 assert fresh_tile.computed and w._fresh, "Recompute did not correct the new image"
+assert w.btn_compute.text().strip() == "Recompute" and w.btn_orig.isEnabled(), \
+    "compute button and compare toggle did not unlock after the first pass"
+assert w.wp_info.isVisibleTo(w) and "estimated" in w.lab_wp.text(), \
+    f"white point readout missing after computing: {w.lab_wp.text()!r}"
 w.cb_autorun.setChecked(True)
 
 # Ctrl+Z puts back what the last paste/open/delete changed
@@ -215,6 +253,12 @@ w.delete_selected()
 assert [(t.loaded, t.name) for t in w.tiles] != before, "delete changed nothing to undo"
 w.undo()
 assert [(t.loaded, t.name) for t in w.tiles] == before, "undo did not restore the gallery"
+w.redo()
+assert [(t.loaded, t.name) for t in w.tiles] != before, "redo did not replay the delete"
+w.undo()
+assert [(t.loaded, t.name) for t in w.tiles] == before, "second undo lost the gallery"
+w.add_empty()
+assert not w._redo, "a new action must fork the history"
 
 # the status line tracks the selection instead of going stale
 w.select_all()

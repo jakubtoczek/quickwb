@@ -1,7 +1,8 @@
 """QuickWB GUI: drop/paste images, white-balance them, export or copy to clipboard.
 
 A scrollable gallery of image tiles. The control panel reads top-to-bottom as the
-pipeline: what is selected -> how it is computed -> the knobs -> compare -> export.
+pipeline: view -> what is selected -> how it is computed -> the knobs -> compare
+-> what the image is -> export.
 'All together' computes one shared white point for the whole selection; the
 eyedropper then applies that pick to the whole selection too. Live edits run on a
 downscaled preview; export re-renders full-res and always writes the corrected
@@ -224,6 +225,7 @@ class Tile(QFrame):
         self.name = ""
         self.params = dict(DEFAULTS)
         self.selected = self.active = False
+        self.head = None          # filename caption; Single view hides it
         self.show_orig = False    # compare is per image, not a global switch
         self.computed = False     # untouched pixels until a pass has run
         self._lay = QVBoxLayout(self)
@@ -240,6 +242,7 @@ class Tile(QFrame):
         """Recursive: a nested QHBoxLayout has no .widget(), so the old button
         row used to survive and pop back up on the next resize."""
         lay = lay or self._lay
+        self.head = None          # about to be deleted with the rest
         while lay.count():
             item = lay.takeAt(0)
             w = item.widget()
@@ -266,9 +269,9 @@ class Tile(QFrame):
 
     def _build_image(self):
         self._clear_layout()
-        head = QLabel(self.name)
-        head.setStyleSheet("color:#cfcfcf; font-weight:600; border:none;")
-        self._lay.addWidget(head)
+        self.head = QLabel(self.name)
+        self.head.setStyleSheet("color:#cfcfcf; font-weight:600; border:none;")
+        self._lay.addWidget(self.head)
         self.view = TileView()
         self.view.clicked.connect(lambda mods: self.win.select(self, mods))
         self.view.picked.connect(lambda x, y: self.win.on_pick(self, x, y))
@@ -391,7 +394,7 @@ class AddBar(QFrame):
 
 
 class _Canvas(QGraphicsView):
-    """QGraphicsView gives pan (left-drag) and scale for free; we add Ctrl+scroll
+    """QGraphicsView gives pan (left-drag) and scale for free; we add wheel
     zoom and refit-on-resize."""
 
     def __init__(self, owner: "ZoomView"):
@@ -403,12 +406,11 @@ class _Canvas(QGraphicsView):
         self.setRenderHints(QPainter.SmoothPixmapTransform | QPainter.Antialiasing)
 
     def wheelEvent(self, e):
-        if e.modifiers() & Qt.ControlModifier:
-            f = 1.15 if e.angleDelta().y() > 0 else 1 / 1.15
-            self.scale(f, f)
-            self.owner._zoom_changed()
-        else:
-            super().wheelEvent(e)
+        # the image is fitted, so there is nothing to scroll past -- the wheel
+        # zooms whether or not Ctrl is held
+        f = 1.15 if e.angleDelta().y() > 0 else 1 / 1.15
+        self.scale(f, f)
+        self.owner._zoom_changed()
 
     def resizeEvent(self, e):
         super().resizeEvent(e)
@@ -416,12 +418,12 @@ class _Canvas(QGraphicsView):
 
 
 class ZoomView(QWidget):
-    """Maximised single-image view (double-click). Ctrl+scroll zooms, left-drag
+    """Maximised single-image view (double-click). Scroll zooms, left-drag
     pans, a Reset button shows when zoomed, Esc closes."""
 
     def __init__(self):
         super().__init__()
-        self.setWindowTitle(f"{APP_NAME} - Ctrl+scroll zoom - drag to pan - Esc to close")
+        self.setWindowTitle(f"{APP_NAME} - scroll to zoom - drag to pan - Esc to close")
         icon = app_icon()
         if icon is not None:
             self.setWindowIcon(icon)
@@ -485,7 +487,9 @@ class MainWindow(QMainWindow):
         self.active: Tile | None = None
         self.batch = False        # False: each image on its own; True: one joint correction
         self.single = True        # True: only the active tile, big; False: grid
+        self._anchor = None       # where a Shift range starts (not the last click)
         self._undo = []           # snapshots for Ctrl+Z, newest last
+        self._redo = []           # what Ctrl+Z took away, for Ctrl+Shift+Z
         self._loading = False     # guard: panel is being synced, ignore widget signals
         self._fresh = True
 
@@ -495,6 +499,7 @@ class MainWindow(QMainWindow):
         self.scroll = QScrollArea()
         self.scroll.setWidgetResizable(True)
         self.scroll.setWidget(self.grid_host)
+        self.grid_host.mousePressEvent = lambda e: self.clear_selection()
 
         gallery = QWidget()
         gcol = QVBoxLayout(gallery)
@@ -515,6 +520,9 @@ class MainWindow(QMainWindow):
         QShortcut(QKeySequence.Paste, self, lambda: self.paste_into(self.active))
         QShortcut(QKeySequence.Delete, self, self.delete_selected)
         QShortcut(QKeySequence.Undo, self, self.undo)
+        QShortcut(QKeySequence.SelectAll, self, self.select_all)
+        QShortcut(QKeySequence.Redo, self, self.redo)              # Ctrl+Y
+        QShortcut(QKeySequence("Ctrl+Shift+Z"), self, self.redo)   # and the habit
         QShortcut(QKeySequence(Qt.Key_Right), self, lambda: self._step(1))
         QShortcut(QKeySequence(Qt.Key_Left), self, lambda: self._step(-1))
 
@@ -544,6 +552,9 @@ class MainWindow(QMainWindow):
     def _update_nav(self):
         on = self.single and len(self.tiles) > 1
         self.nav.setVisible(on)
+        for t in self.tiles:
+            if t.head is not None:
+                t.head.setVisible(not on)   # the counter carries the name instead
         if not on:
             return
         i = self.tiles.index(self.active) if self.active in self.tiles else 0
@@ -561,17 +572,24 @@ class MainWindow(QMainWindow):
         col = QVBoxLayout(panel)
         col.setSpacing(8)
 
-        # 1. what everything below acts on
-        sec, sl = _section("Selection")
-        row, self.view_btns = _segmented(("Grid", "Single"), self._on_view)
-        self.view_btns[0].setToolTip("All slots side by side")
-        self.view_btns[1].setToolTip("Only the ringed image, at window size.\n"
+        # 1. how the slots are laid out (display only -- touches no pixels)
+        sec, vl = _section("View")
+        row, self.view_btns = _segmented(("Single", "Grid"), self._on_view)
+        self.view_btns[0].setToolTip("Only the ringed image, at window size.\n"
                                      "Left / Right arrows step through the images.")
-        self.view_btns[1].setChecked(True)      # the widget must agree with self.single
-        sl.addWidget(row)
+        self.view_btns[1].setToolTip("All slots side by side")
+        vl.addWidget(row)
+        col.addWidget(sec)
+
+        # 2. what everything below acts on
+        sec, sl = _section("Selection")
         r = QHBoxLayout()
-        for text, slot in (("Select all", self.select_all), ("Clear", self.clear_selection)):
+        for text, slot, tip in (
+                ("Select all", self.select_all, "Every loaded image (Ctrl+A)"),
+                ("Deselect", self.clear_selection,
+                 "Select nothing -- clicking the background does this too")):
             b = QPushButton(text)
+            b.setToolTip(tip)
             b.clicked.connect(slot)
             r.addWidget(b)
         sl.addLayout(r)
@@ -580,7 +598,7 @@ class MainWindow(QMainWindow):
         sl.addWidget(self.lab_sel)
         col.addWidget(sec)
 
-        # 2. how, and when, the correction is computed
+        # 3. how, and when, the correction is computed
         sec, pl = _section("Process")
         row, self.mode_btns = _segmented(("Separately", "All together"), self._on_mode)
         self.mode_btns[0].setToolTip("Every selected image gets its own white point")
@@ -614,6 +632,20 @@ class MainWindow(QMainWindow):
         self._add_slider(wl, "neutralize", "De-cast", 0,
                          "Which estimator to trust: 0 = brightest pixels only (subtle), "
                          "100 = whole frame (strong de-cast)")
+        self.wp_info = QWidget()          # what Auto/Pick actually came up with
+        r = QHBoxLayout(self.wp_info)
+        r.setContentsMargins(0, 4, 0, 0)
+        self.sw_wp = QLabel()
+        self.sw_wp.setFixedSize(14, 14)
+        self.lab_wp = QLabel("")
+        self.lab_wp.setStyleSheet("color:#9aa; border:none;")
+        tip = ("The colour being treated as neutral -- it is divided out of the image.\n"
+               "estimated: computed from the picture   picked: your eyedropper\n"
+               "shared: one white point for the whole selection")
+        self.wp_info.setToolTip(tip)
+        r.addWidget(self.sw_wp)
+        r.addWidget(self.lab_wp, 1)
+        wl.addWidget(self.wp_info)
         col.addWidget(sec)
 
         # 3b. manual tweaks on top
@@ -634,9 +666,16 @@ class MainWindow(QMainWindow):
         self.btn_orig.toggled.connect(self._on_show_orig)
         col.addWidget(self.btn_orig)
 
+        # 5. what the ringed image actually is
+        sec, il = _section("Image")
+        self.lab_info = QLabel("no image")
+        self.lab_info.setStyleSheet("color:#9aa; border:none;")
+        il.addWidget(self.lab_info)
+        col.addWidget(sec)
+
         col.addStretch(1)
 
-        # 5. out
+        # 6. out
         self.btn_save = QPushButton("Save selected...")
         self.btn_save.clicked.connect(lambda: self.save(self.selection))
         col.addWidget(self.btn_save)
@@ -683,13 +722,17 @@ class MainWindow(QMainWindow):
         self._fresh = True                      # state is immediate; only the icon blinks
         self.btn_compute.setIcon(_dot(BUSY))    # brief flash so a fast pass is still visible
         QTimer.singleShot(120, lambda: self._set_fresh(self._fresh))
+        self._sync_panel()                      # "Compute" becomes "Recompute"
 
     def _on_autorun(self, on: bool):
         if on and not self._fresh:
             self.recompute()
 
     def _on_view(self, i: int):
-        self.single = bool(i)
+        self.single = not i
+        if self.single and self.active not in self.tiles:
+            self.select(self.tiles[0], Qt.NoModifier)   # nothing ringed -> show the
+            return                                      # first slot; select() reflows
         self._reflow()
 
     def _step(self, d: int):
@@ -713,21 +756,35 @@ class MainWindow(QMainWindow):
         self.request_render()
 
     # -- undo -------------------------------------------------------------
-    def _push_undo(self):
-        """Snapshot before anything that adds, replaces or removes an image.
-        Pixel arrays go in by reference, so this costs a dict per slot."""
-        self._undo.append([
+    def _snapshot(self):
+        """Pixel arrays go in by reference, so this costs a dict per slot."""
+        return [
             dict(full=t.full, preview=t.preview, mild=t.mild, glass=t.glass,
                  manual_wp=t.manual_wp, auto_basis=t.auto_basis, name=t.name,
                  params=dict(t.params), show_orig=t.show_orig, computed=t.computed)
-            for t in self.tiles])
+            for t in self.tiles]
+
+    def _push_undo(self):
+        """Called before anything that adds, replaces or removes an image."""
+        self._undo.append(self._snapshot())
         del self._undo[:-10]
+        self._redo.clear()        # a new action forks the history
 
     def undo(self):
         if not self._undo:
             self.status.setText("Nothing to undo.")
             return
-        snap = self._undo.pop()
+        self._redo.append(self._snapshot())
+        self._restore(self._undo.pop(), "Undone.")
+
+    def redo(self):
+        if not self._redo:
+            self.status.setText("Nothing to redo.")
+            return
+        self._undo.append(self._snapshot())
+        self._restore(self._redo.pop(), "Redone.")
+
+    def _restore(self, snap, msg):
         for t in self.tiles:
             t.setParent(None)
             t.deleteLater()
@@ -746,7 +803,7 @@ class MainWindow(QMainWindow):
         self._reflow()
         self._restyle_all()
         self._sync_panel()
-        self.status.setText("Undone.")
+        self.status.setText(msg)
 
     # -- tiles / layout ---------------------------------------------------
     def add_empty(self) -> Tile:
@@ -769,7 +826,15 @@ class MainWindow(QMainWindow):
     def _reflow(self):
         while self.grid.count():
             self.grid.takeAt(0)
-        self.view_btns[0].setEnabled(len(self.tiles) > 1)   # Grid needs a gallery
+        gallery = len(self.tiles) > 1
+        self.view_btns[1].setEnabled(gallery)      # Grid needs a gallery
+        if not gallery and not self.single:        # ... and without one, Single is
+            self.single = True                     # the only thing Grid could show
+            for b in self.view_btns:
+                b.blockSignals(True)               # no re-entrant _reflow
+            self.view_btns[0].setChecked(True)
+            for b in self.view_btns:
+                b.blockSignals(False)
         self._update_nav()
         # one tile fills the window: always when it is the only one, and in
         # Single view. Anything else needs the fixed-size grid.
@@ -799,6 +864,8 @@ class MainWindow(QMainWindow):
     def _after_load(self, added: list["Tile"]):
         """With Auto on the new images are corrected immediately; with Auto off
         they stay as they came in and the marker goes amber."""
+        if len(added) > 1 and self.single:
+            self.view_btns[1].setChecked(True)   # several at once -> show them all
         if self.cb_autorun.isChecked():
             for t in added:
                 t.computed = True
@@ -806,6 +873,7 @@ class MainWindow(QMainWindow):
             self._set_fresh(True)
         else:
             self._set_fresh(False)
+        self._sync_panel()
 
     def add_images(self, paths: list[str], into: Tile | None = None):
         self._push_undo()
@@ -856,17 +924,18 @@ class MainWindow(QMainWindow):
     # -- selection --------------------------------------------------------
     def select(self, tile: Tile, mods):
         """Empty slots are selectable too, so Delete can remove them."""
-        if mods & Qt.ShiftModifier and self.active is not None and self.active in self.tiles:
-            i, j = self.tiles.index(self.active), self.tiles.index(tile)
+        if mods & Qt.ShiftModifier and self._anchor in self.tiles:
+            i, j = self.tiles.index(self._anchor), self.tiles.index(tile)
             lo, hi = sorted((i, j))
-            self.selection = self.tiles[lo:hi + 1]
-        elif mods & Qt.ControlModifier:
-            if tile in self.selection:
+            self.selection = self.tiles[lo:hi + 1]   # anchor stays put, so the
+        else:                                        # range grows as you re-click
+            self._anchor = tile
+            if not mods & Qt.ControlModifier:
+                self.selection = [tile]
+            elif tile in self.selection:
                 self.selection.remove(tile)
             else:
                 self.selection.append(tile)
-        else:
-            self.selection = [tile]
         self.active = tile if tile in self.selection else (
             self.selection[-1] if self.selection else None)
         if self.single:
@@ -944,19 +1013,44 @@ class MainWindow(QMainWindow):
                   *self.mode_btns, *self.wp_btns, *self._rows.values()):
             w.setEnabled(has)
         self.wp_btns[1].setEnabled(self.active is not None and self.active.loaded)
+        self._sync_info()
         if not self.active or not self.active.loaded:
             self.status.setText(self._idle_status())
             return
+        # nothing computed yet -> the preview IS the original, and there is
+        # nothing to go back to, so the compare button is stuck on
+        done = self.active.computed
+        self.btn_compute.setText(" Recompute" if done else " Compute")
+        self.btn_orig.setEnabled(done)
         self._loading = True
         for attr, s in self._sliders.items():
             s.setValue(self.active.params[attr])
-        self.btn_orig.setChecked(self.active.show_orig)
+        self.btn_orig.setChecked(self.active.show_orig or not self.active.computed)
         picked = self.active.manual_wp is not None
         self.wp_btns[1 if picked else 0].setChecked(True)
         self._rows["neutralize"].setEnabled(not picked)   # ignored once a patch is picked
         self._loading = False
         if not self._picking():
             self.status.setText(self._idle_status())
+
+    def _sync_info(self):
+        """What the ringed image is, and (under White point) the neutral colour
+        that was actually applied to it."""
+        t = self.active
+        ok = bool(t and t.loaded)
+        self.wp_info.setVisible(ok and t.computed)   # nothing applied yet, nothing to show
+        if not ok:
+            self.lab_info.setText("no image")
+            return
+        h, w = t.full.shape[:2]
+        self.lab_info.setText(f"{t.name or 'untitled'}\n{w} × {h} px"
+                              f"   —   {w * h / 1e6:.1f} MP")
+        wp = np.clip(np.asarray(t.white_point(), float), 0, 255).astype(int)
+        self.sw_wp.setStyleSheet("background:#%02X%02X%02X; border:1px solid #555;"
+                                 % tuple(wp))
+        how = ("picked" if t.manual_wp is not None
+               else "shared" if t.auto_basis is not None else "estimated")
+        self.lab_wp.setText("#%02X%02X%02X  ·  %s" % (*wp, how))
 
     def _on_slider(self):
         if self._loading:

@@ -16,18 +16,25 @@ selection so a set stays consistent.
   copied files.
 - **One image at a time, or a gallery.** **Single** shows the current slot at
   window size, with **◀ / ▶** (or the arrow keys) and a `3 / 7` counter
-  naming the file. **Grid** lays every slot out side by side and scrolls.
-  Double-click any image for a full-screen view with zoom and pan.
+  naming the file. **Grid** lays every slot out side by side and scrolls;
+  loading several images at once switches to it for you.
+  Double-click any image for a full-screen view — scroll to zoom,
+  drag to pan, Esc to close.
 - **Slots.** `+ add another slot` appends an empty drop zone and takes you
   to it; **Delete** removes any selected slot, and the last image clears back
   to a drop zone instead of leaving you stuck with it. Click to select,
-  **Ctrl+click** to add, **Shift+click** for a range, **Select all** for the
-  lot. The active tile is ringed; every control acts on the selection.
+  **Ctrl+click** to add, **Shift+click** for a range, **Ctrl+A** for the lot,
+  and a click on the background (or **Deselect**) to select nothing. The
+  active tile is ringed; every control acts on the selection.
 - **Ctrl+Z** undoes the last open, paste or delete — pasting onto the wrong
-  slot is one keystroke to fix.
+  slot is one keystroke to fix. **Ctrl+Shift+Z** (or Ctrl+Y) puts it back:
+  images you undo away are kept, so deleting and changing your mind costs
+  nothing.
 - **White point → Auto** estimates the neutral colour from the image itself;
   the **De-cast** slider sets how hard it looks (brightest pixels only ↔
   whole frame).
+  Once a correction has been computed the section shows the colour it settled
+  on — a swatch, its hex value, and where it came from.
 - **White point → Pick…** is an eyedropper: click something that *should*
   be grey or white. In **All together** mode one pick sets the white point
   for the whole selection.
@@ -35,12 +42,15 @@ selection so a set stays consistent.
   preview is current: **green** = matches the settings, **amber** = something
   changed since the last pass. Leave **Auto** ticked and it recomputes as you
   go; untick it for big batches, and images you load then stay untouched on
-  screen until you press Recompute.
+  screen until you press it — while nothing has been computed the button
+  reads **Compute** and **Show original** is held down, because the preview
+  *is* the original.
 - Fine-tune with **temperature**, **tint**, **brightness** and **contrast**.
   Each section has its own **Reset**.
 - **Show original** previews the selected images untouched — select one and
   it compares just that one, next to its corrected neighbours. Exports are
   always the corrected version.
+- The **Image** panel names the active image and gives its size in pixels.
 - **Save** (PNG/JPEG/TIFF; a folder when several) and **Copy** — **Ctrl+C**
   copies the selection: one image as a bitmap, or several as files you can
   paste into PowerPoint as separate pictures.
