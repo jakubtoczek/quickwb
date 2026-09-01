@@ -1,0 +1,20 @@
+[project]
+name = "quickwb"
+version = "0.1.0"
+description = "QuickWB — drag-and-drop image white balance with export and clipboard copy"
+requires-python = ">=3.11"
+dependencies = [
+    "PySide6-Essentials>=6.6",
+    "numpy>=1.26",
+    "Pillow>=10.0",
+]
+
+[project.scripts]
+quickwb = "quickwb.__main__:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/quickwb"]
