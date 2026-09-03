@@ -60,9 +60,11 @@ if errorlevel 1 (
 rem --- one-time: put a QuickWB shortcut (with the app icon) on the Desktop ---
 rem     resolve Desktop via .NET so a OneDrive-redirected / localized folder works;
 rem     best-effort - a shortcut failure must never block launch.
+rem     The stamp lives in the venv, not the root, because two apps can share
+rem     one root and each still needs its own shortcut.
 rem     The stamp is what keeps this off the fast path: starting PowerShell only
 rem     to be told the shortcut is already there costs a second of every launch.
-if not exist "%ROOT%\.shortcut" (
+if not exist "%UV_PROJECT_ENVIRONMENT%\.shortcut" (
     powershell -NoProfile -ExecutionPolicy Bypass -Command ^
         "try {" ^
             "$lnk = Join-Path ([Environment]::GetFolderPath('Desktop')) 'QuickWB.lnk';" ^
@@ -72,7 +74,7 @@ if not exist "%ROOT%\.shortcut" (
                 "$s.IconLocation='%ICON%'; $s.WindowStyle=7;" ^
                 "$s.Description='QuickWB - image white balance'; $s.Save() }" ^
         "} catch {}"
-    echo done> "%ROOT%\.shortcut"
+    echo done> "%UV_PROJECT_ENVIRONMENT%\.shortcut"
 )
 
 rem --- launch the GUI with pythonw (no console window) and exit ---
