@@ -1,62 +1,84 @@
 # QuickWB
 
 Open, drag or paste an image in, white-balance it, and export it or copy it to
-the clipboard. A small single-window desktop app (PySide6) with a dark UI.
+the clipboard. A small single-window desktop app (PySide6).
 
 ![icon](src/quickwb/assets/quickwb.png)
 
-Works on one image or on a batch: **Separately** gives each image its own
-correction, **All together** computes one shared correction for the whole
-selection so a set stays consistent.
+Works on one image or on a batch, and the selection decides which: **Separately**
+gives each image its own correction, **Together** computes one shared
+correction for the whole selection so a set stays consistent.
 
 ## What it does
 
 - **Drop, open, or paste** images (PNG, JPG, TIFF, BMP, WebP). Drag several
   in at once, or **paste** with **Ctrl+V** — a screenshot, a copied image, or
-  copied files.
+  copied files. A drop on a slot fills that one; a drop anywhere else in the
+  gallery opens as many new slots as it needs. Opened files are named after the
+  file; pasted ones become `clipboard #1`, `#2`, … so two screenshots are never
+  the same label.
 - **One image at a time, or a gallery.** **Single** shows the current slot at
   window size, with **◀ / ▶** (or the arrow keys) and a `3 / 7` counter
-  naming the file. **Grid** lays every slot out side by side and scrolls;
-  loading several images at once switches to it for you.
-  Double-click any image for a full-screen view — scroll to zoom,
-  drag to pan, Esc to close.
+  naming the file. **Grid** lays every slot out side by side and scrolls, and
+  there the arrow keys walk it the way it looks — left and right along a row,
+  up and down between rows; as soon as a second image is on screen the app
+  switches to it for you. Double-click any image for a full-screen view —
+  scroll to zoom, drag to pan, ◀ / ▶ for the next image, Esc to close. Nothing
+  is drawn on top of the picture, so it screenshots clean: stepping to another
+  image, or closing and re-opening, is what brings the zoom back to a plain fit.
+  There
+  is no counter up there, so the same `3 / 7` line flashes over the image as
+  you land on it, then fades.
 - **Slots.** `+ add another slot` appends an empty drop zone and takes you
   to it; **Delete** removes any selected slot, and the last image clears back
   to a drop zone instead of leaving you stuck with it. Click to select,
   **Ctrl+click** to add, **Shift+click** for a range, **Ctrl+A** for the lot,
   and a click on the background (or **Deselect**) to select nothing. The
-  active tile is ringed; every control acts on the selection.
-- **Ctrl+Z** undoes the last open, paste or delete — pasting onto the wrong
-  slot is one keystroke to fix. **Ctrl+Shift+Z** (or Ctrl+Y) puts it back:
+  slot you are on is ringed — solid when it is part of the selection, dashed
+  when it is not — and the arrows walk from there; every control acts on the
+  selection.
+- **Ctrl+Z** undoes the last thing that changed the images: an open, a paste, a
+  delete, a white balance, a slider — and says which, so you can see what came
+  back. **Ctrl+Shift+Z** (or Ctrl+Y) puts it back:
   images you undo away are kept, so deleting and changing your mind costs
-  nothing.
-- **White point → Auto** estimates the neutral colour from the image itself;
-  the **De-cast** slider sets how hard it looks (brightest pixels only ↔
-  whole frame).
-  Once a correction has been computed the section shows the colour it settled
-  on — a swatch, its hex value, and where it came from.
-- **White point → Pick…** is an eyedropper: click something that *should*
-  be grey or white. In **All together** mode one pick sets the white point
-  for the whole selection.
-- **Recompute** re-runs the correction, with a marker showing whether the
-  preview is current: **green** = matches the settings, **amber** = something
-  changed since the last pass. Leave **Auto** ticked and it recomputes as you
-  go; untick it for big batches, and images you load then stay untouched on
-  screen until you press it — while nothing has been computed the button
-  reads **Compute** and **Show original** is held down, because the preview
-  *is* the original.
-- Fine-tune with **temperature**, **tint**, **brightness** and **contrast**.
-  Each section has its own **Reset**.
-- **Show original** previews the selected images untouched — select one and
-  it compares just that one, next to its corrected neighbours. Exports are
-  always the corrected version.
-- The **Image** panel names the active image and gives its size in pixels.
+  nothing. Selecting, switching view and **Show original** change nothing, so
+  they leave the history alone.
+- **White point** holds everything that decides the neutral colour. Loading an
+  image corrects nothing: you keep seeing it as it came in until you press
+  **Auto** (estimate the neutral colour from the image itself) or **Pick…**
+  (an eyedropper — click, or drag a rectangle over, something that *should* be
+  grey or white on *any* selected image; a rectangle averages everything inside
+  it). Those two are also what re-runs a balance, so there is no separate apply
+  step, and everything below them stays greyed out until one has run. The
+  **scope** above them is a readout, not a control: it follows what you
+  selected — one image is balanced on its own, several get one shared white
+  point, and a pick then covers all of them. The **De-cast** slider sets how
+  hard Auto looks (brightest pixels only ↔ whole frame) and re-runs it as you
+  drag. Underneath, the colour the last pass settled on: a swatch, its hex
+  value, and where it came from — `auto` or `picked` on its own,
+  `shared auto (1, 3-5)` or `shared picked (all)` when several images were
+  balanced together, naming the images it was computed from — that is history,
+  so re-balancing one of them on its own does not change what the others say.
+  Slots are counted down the grid and renumbered as you move things about; an
+  image that has since been deleted or replaced shows as `ex2`, the slot it came
+  from. `varies` when the selection does not agree,
+  and *white balance not computed yet* before the first pass.
+- Fine-tune with **temperature**, **tint**, **brightness** and **contrast**;
+  **Reset** puts the four of them back.
+- **Show original** is an on/off switch that previews the selected images
+  untouched — select one and it compares just that one, next to its corrected
+  neighbours. It waits until there is a correction to compare against, and
+  exports match what you see: an image you never balanced is saved as it came
+  in.
+- The **Image** panel names the ringed image and gives its size in pixels, or
+  counts the selection when several are picked.
 - **Save** (PNG/JPEG/TIFF; a folder when several) and **Copy** — **Ctrl+C**
   copies the selection: one image as a bitmap, or several as files you can
   paste into PowerPoint as separate pictures.
 
 Every slider has an editable value box (Lightroom-style scales: de-cast
-0–100, temperature / tint / brightness / contrast −100…+100) — drag or type.
+0–100, temperature / tint / brightness / contrast −100…+100) — drag for whole
+numbers, or type a fraction like −2.5 the slider cannot land on.
 
 Live edits run on a downscaled preview so sliders stay snappy; export and
 clipboard copies always re-render at full resolution.
@@ -71,21 +93,24 @@ No admin rights, no PATH or registry changes, and nothing written into your user
    *"Windows protected your PC"*.
 3. Extract it somewhere it can stay — `C:\Users\Public\QuickWB` works for every account on the
    machine; your Documents folder is fine too.
-4. Double-click **`QuickWB.bat`**. It asks once where to put the Python runtime:
+4. Double-click **`QuickWB.bat`**. Nothing is asked: the Python runtime goes into the
+   **shared** folder `C:\ProgramData\PyApps`, where every tool set up this way re-uses the
+   same `uv.exe`, Python and package cache — files common to two of them are stored once
+   (hard-linked), so a second tool only costs the libraries it does not already share.
 
-   | | Where | Good for |
-   |---|---|---|
-   | **1 — shared** | `C:\ProgramData\PyApps` | the default. Any tool set up the same way re-uses that `uv.exe`, Python and package cache. Files common to both are stored once (hard-linked), so a second tool only costs the libraries it does not already share |
-   | **2 — private** | `C:\Users\Public\QuickWB` | one self-contained folder that `uninstall.bat` deletes whole |
+   Prefer it self-contained? Run **`QuickWB.bat private`** from a terminal (or `2`) the
+   *first* time, and everything lands in `C:\Users\Public\QuickWB`, a single folder that
+   `uninstall.bat` deletes whole.
 
-   It then downloads [`uv`](https://github.com/astral-sh/uv), a matching Python and the
+   Either way it downloads [`uv`](https://github.com/astral-sh/uv), a matching Python and the
    dependencies — about 260 MB on disk, a minute or two on a normal connection — and puts
    a **QuickWB** shortcut on your Desktop.
 5. From now on use the Desktop shortcut. Leave the extracted folder where it is; the
    shortcut points at it.
 
-The question is asked once — after that the existing folder is found and re-used, so later
-launches start straight away. Set `QUICKWB_RUNTIME` to force some other location.
+The choice is made once: from then on the folder on disk is the memory, so the Desktop
+shortcut and a plain double-click find it and start straight away — no argument needed
+again. Set `QUICKWB_RUNTIME` to force some other location.
 
 `uninstall.bat` reverses all of it: the whole folder in the private case, only QuickWB's own
 virtual environment in the shared case, so anything else using that folder keeps working.
@@ -125,9 +150,10 @@ dark border can't drag the estimate. They are the two ends of one family — the
 *Shades of Gray* Minkowski-norm framework, where p=∞ is White-Patch and p=1 is
 Gray-World — so the slider is just moving along that axis.
 
-**Pick…** replaces the estimate with the mean colour of a small patch you click
-— the manual version of the same thing, and the most reliable option when the
-shot contains a grey card, a white wall, or a sheet of paper.
+**Pick…** replaces the estimate with the mean colour of what you point at — a
+small patch under a click, or everything inside a rectangle you drag. The manual
+version of the same thing, and the most reliable option when the shot contains a
+grey card, a white wall, or a sheet of paper.
 
 **2. Apply a von Kries diagonal transform** — multiply each channel by
 `target / white_point`, so the estimated white point lands on near-white
@@ -139,7 +165,7 @@ removing the cast requires. This is what GIMP's white-point eyedropper does.
 rather than a colour wash over the top. **Brightness** and **contrast** are a
 plain tone curve applied afterwards.
 
-In **All together** mode the estimators run once over the pooled pixels of the
+In **Together** mode the estimators run once over the pooled pixels of the
 whole selection (subsampled past 400k pixels), and every image gets that single
 white point.
 
@@ -154,10 +180,4 @@ The maths lives in `src/quickwb/wb.py`; run it directly for a self-check:
 
 ```bash
 python src/quickwb/wb.py
-```
-
-## Regenerating the icon
-
-```bash
-python misc/make_icon.py
 ```

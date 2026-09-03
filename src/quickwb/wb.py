@@ -1,9 +1,8 @@
 """White balance for arbitrary RGB images.
 
-Ported and trimmed from SABG_analyzer's quickwbance.py (histology-specific bits
-dropped). The idea is unchanged: estimate a *white point* — the colour the image
-thinks is neutral — and apply a per-channel linear gain that maps it to near-white,
-so a colour cast is removed with minimal hue shift (same as GIMP's white-point pick).
+Estimate a *white point* — the colour the image thinks is neutral — and apply a
+per-channel linear gain that maps it to near-white, so a colour cast is removed
+with minimal hue shift (same as GIMP's white-point pick).
 
 Everything works on uint8 HxWx3 RGB arrays.
 """
@@ -57,19 +56,30 @@ def auto_white_point(rgb: np.ndarray, neutralize: float = 0.5,
     return (1.0 - s) * mild + s * gray_world(rgb, percentile)
 
 
+def white_point_from_rect(rgb: np.ndarray, x0: int, y0: int,
+                          x1: int, y1: int) -> np.ndarray:
+    """White point = mean RGB of the box (x0,y0)-(x1,y1) — the eyedropper's ROI.
+
+    Averaging a region you dragged over beats a single click when nothing in the
+    frame is a clean grey: the noise and the texture average out.
+    """
+    h, w = rgb.shape[:2]
+    xa, xb = sorted((int(x0), int(x1)))
+    ya, yb = sorted((int(y0), int(y1)))
+    patch = rgb[max(0, ya):min(h, yb + 1),
+                max(0, xa):min(w, xb + 1)].astype(np.float32).reshape(-1, 3)
+    if len(patch) == 0:
+        return NEUTRAL.copy()
+    return patch.mean(axis=0)
+
+
 def white_point_from_patch(rgb: np.ndarray, x: int, y: int, radius: int = 6) -> np.ndarray:
-    """White point = mean RGB of a square patch around (x, y) — the eyedropper.
+    """White point = mean RGB of a square patch around (x, y) — a single click.
 
     Click something that *should* be neutral grey/white; that colour becomes the
     white point. Robust to a stray pixel because it averages a small patch.
     """
-    h, w = rgb.shape[:2]
-    x0, x1 = max(0, x - radius), min(w, x + radius + 1)
-    y0, y1 = max(0, y - radius), min(h, y + radius + 1)
-    patch = rgb[y0:y1, x0:x1].astype(np.float32).reshape(-1, 3)
-    if len(patch) == 0:
-        return NEUTRAL.copy()
-    return patch.mean(axis=0)
+    return white_point_from_rect(rgb, x - radius, y - radius, x + radius, y + radius)
 
 
 def apply_temperature(wp: np.ndarray, delta: float, k: float = 0.02) -> np.ndarray:
@@ -142,4 +152,8 @@ if __name__ == "__main__":  # ponytail: smallest self-check for the WB math
 
     wp = white_point_from_patch(img, 30, 30, radius=3)
     assert np.allclose(wp, [110, 128, 150], atol=1), "eyedropper reads the local colour"
+    img[0:10, 0:10] = (200, 200, 200)
+    assert np.allclose(white_point_from_rect(img, 0, 0, 9, 9), [200, 200, 200], atol=1),         "a dragged ROI averages the region it covers"
+    assert np.allclose(white_point_from_rect(img, 9, 9, 0, 0),
+                       white_point_from_rect(img, 0, 0, 9, 9)), "drag direction must not matter"
     print("wb self-check OK")
