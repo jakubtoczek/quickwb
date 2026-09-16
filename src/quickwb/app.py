@@ -27,7 +27,7 @@ from PySide6.QtWidgets import (
     QSlider, QVBoxLayout, QWidget,
 )
 
-from . import wb
+from . import __version__, wb
 
 APP_NAME = "QuickWB"
 IMAGE_EXTS = (".png", ".jpg", ".jpeg", ".bmp", ".tif", ".tiff", ".webp")
@@ -653,7 +653,7 @@ class ZoomView(QWidget):
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle(f"{APP_NAME} - image white balance")
+        self.setWindowTitle(f"{APP_NAME} {__version__} - image white balance")
         icon = app_icon()
         if icon is not None:
             self.setWindowIcon(icon)

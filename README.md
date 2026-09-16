@@ -125,6 +125,7 @@ uv run --project . quickwb
 pip install -e .
 python -m quickwb
 
+python misc/bump.py         # stamp today's date as the version
 python misc/smoke_test.py   # gallery / white-balance self-check
 bash   misc/root_test.sh    # where the launcher decides to install
 ```
