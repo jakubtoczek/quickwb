@@ -55,9 +55,9 @@ echo QuickWB uses the shared runtime folder:
 echo     %SHARED_ROOT%
 echo.
 echo   [1] Remove QuickWB only  (recommended^)
-echo       Deletes %OWNENV%
-echo       and the Desktop shortcut. The shared Python, uv.exe and package
-echo       cache stay, so anything else using them keeps working.
+echo       Deletes %OWNENV%,
+echo       the Desktop shortcut and the Start menu entry. The shared Python,
+echo       uv.exe and package cache stay, so anything else using them keeps working.
 echo.
 echo   [2] Remove EVERYTHING in %SHARED_ROOT%
 echo       Also deletes the shared Python, uv.exe and the package cache.
@@ -120,7 +120,9 @@ if exist "%~1" (
 exit /b 0
 
 :unshortcut
+rem Desktop shortcut (made by the launcher) and Start menu entry (made by the app)
 powershell -NoProfile -ExecutionPolicy Bypass -Command ^
-    "$lnk = Join-Path ([Environment]::GetFolderPath('Desktop')) 'QuickWB.lnk';" ^
-    "if (Test-Path $lnk) { Remove-Item $lnk -Force }"
+    "foreach ($d in 'Desktop', 'Programs') {" ^
+        "$lnk = Join-Path ([Environment]::GetFolderPath($d)) 'QuickWB.lnk';" ^
+        "if (Test-Path $lnk) { Remove-Item $lnk -Force } }"
 exit /b 0

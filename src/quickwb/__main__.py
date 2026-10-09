@@ -3,6 +3,11 @@
 from __future__ import annotations
 
 import sys
+from pathlib import Path
+
+from . import winshell
+
+_PKG = Path(__file__).resolve().parent  # this package's folder
 
 
 def _apply_dark(app):
@@ -32,23 +37,50 @@ def _apply_dark(app):
     app.setPalette(p)
 
 
-def _set_app_user_model_id(app_id):
-    """Windows: an explicit AppUserModelID makes the taskbar group the app under
-    its own icon (pythonw.exe otherwise shows the generic Python icon)."""
-    try:
-        import ctypes
-        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(app_id)
-    except Exception:  # noqa: BLE001 — non-Windows or blocked; harmless
-        pass
+def _splash():
+    """The icon and the name, on screen while the rest of the app is imported and built.
+    A frameless label, not QSplashScreen: that one waits up to a second for Windows to
+    report it exposed (1.0 s against 0.02 s, measured on 2026-10-09)."""
+    from PySide6.QtCore import Qt
+    from PySide6.QtGui import QColor, QPainter, QPixmap
+    from PySide6.QtWidgets import QLabel
+
+    pm = QPixmap(320, 150)
+    pm.fill(QColor("#2b2b2b"))
+    p = QPainter(pm)
+    icon = QPixmap(str(_PKG / "assets" / "quickwb.png"))
+    if not icon.isNull():
+        p.drawPixmap(20, 35, icon.scaled(80, 80, Qt.KeepAspectRatio, Qt.SmoothTransformation))
+    p.setPen(QColor("#e0e0e0"))
+    f = p.font()
+    f.setPointSize(16)
+    p.setFont(f)
+    p.drawText(120, 70, "QuickWB")
+    f.setPointSize(9)
+    p.setFont(f)
+    p.setPen(QColor("#8d8d8d"))
+    p.drawText(120, 95, "starting…")
+    p.end()
+    s = QLabel()
+    s.setWindowFlags(Qt.SplashScreen | Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint)
+    s.setPixmap(pm)
+    s.resize(pm.size())
+    s.move(s.screen().geometry().center() - s.rect().center())
+    s.show()
+    return s
 
 
 def main() -> int:
     from PySide6.QtWidgets import QApplication
 
-    from .app import APP_NAME, MainWindow, app_icon
-
-    _set_app_user_model_id(APP_NAME)
+    winshell.taskbar_identity("QuickWB", "QuickWB", _PKG.parents[1] / "QuickWB.bat",
+                              _PKG / "assets" / "quickwb.ico")  # before any window
     app = QApplication(sys.argv)
+    splash = _splash()
+    app.processEvents()
+
+    from .app import APP_NAME, MainWindow, app_icon   # the slow part: on screen meanwhile
+
     app.setApplicationName(APP_NAME)
     icon = app_icon()
     if icon is not None:
@@ -56,6 +88,7 @@ def main() -> int:
     _apply_dark(app)
     win = MainWindow()
     win.show()
+    splash.close()
     return app.exec()
 
 

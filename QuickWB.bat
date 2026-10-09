@@ -48,13 +48,19 @@ if not exist "%UV%" (
     )
 )
 
-rem --- install Python + dependencies (fast no-op once done) ---
-echo Preparing environment in %ROOT% ...
-"%UV%" sync --project "%PROJECT%." --python 3.12
+rem --- install Python + dependencies ---
+rem     skipped while uv.lock is the one the environment was built from: even a no-op
+rem     sync costs seconds on a cold start (antivirus scanning uv and the cache)
+fc /b "%PROJECT%uv.lock" "%UV_PROJECT_ENVIRONMENT%\.quickwb.lock" >nul 2>&1
 if errorlevel 1 (
-    echo Environment setup failed.
-    pause
-    exit /b 1
+    echo Preparing environment in %ROOT% ...
+    "%UV%" sync --project "%PROJECT%." --python 3.12
+    if errorlevel 1 (
+        echo Environment setup failed.
+        pause
+        exit /b 1
+    )
+    copy /y "%PROJECT%uv.lock" "%UV_PROJECT_ENVIRONMENT%\.quickwb.lock" >nul
 )
 
 rem --- one-time: put a QuickWB shortcut (with the app icon) on the Desktop ---
