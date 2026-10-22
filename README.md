@@ -56,12 +56,6 @@ virtual environment in the shared case, so anything else using that folder keeps
 
 Every control, and how the correction is computed: **[GUIDE.md](GUIDE.md)**.
 
-## Files
-
-- **Reads** PNG, JPG, TIFF, BMP, WebP, and images or files from the clipboard.
-- **Writes** the corrected image as `<name>_wb.png` (PNG, JPEG or TIFF; a folder of them for
-  several), where you choose — beside the original, never over it unless you pick its name.
-
 ## Development
 
 ```bash

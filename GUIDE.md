@@ -126,3 +126,9 @@ The maths lives in `src/quickwb/wb.py`; run it directly for a self-check:
 ```bash
 python src/quickwb/wb.py
 ```
+
+## Files
+
+- **Reads** PNG, JPG, TIFF, BMP, WebP, and images or files from the clipboard.
+- **Writes** the corrected image as `<name>_wb.png` (PNG, JPEG or TIFF; a folder of them for
+  several), where you choose — beside the original, never over it unless you pick its name.
